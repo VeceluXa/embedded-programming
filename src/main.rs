@@ -25,6 +25,9 @@ static IS_SHINING: Mutex<Cell<bool>> = Mutex::new(Cell::new(false));
 static SHINE_COUNT: Mutex<Cell<u32>> = Mutex::new(Cell::new(0_u32));
 const LED_TOGGLE_TO_STOP: u32= 6;
 const TIM_DELAYMS: u32 = 500;
+static ITERATIONS: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
+static LAST_CLICK_ITERATION: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
+
 #[entry]
 fn main() -> ! {
     let mut dp = pac::Peripherals::take().unwrap();
@@ -73,31 +76,21 @@ fn main() -> ! {
 
 #[interrupt]
 fn EXTI15_10() {
-// When Button interrupt happens three things need to be done
-    // 1) Adjust Global Delay Variable
-    // 2) Update Timer with new Global Delay value
-    // 3) Clear Button Pending Interrupt
-
-    // Start a Critical Section
     cortex_m::interrupt::free(|cs| {
+        let last_click_iteration = LAST_CLICK_ITERATION.borrow(cs);
+        let current_iteration = ITERATIONS.borrow(cs);
         let click_count = CLICK_COUNT.borrow(cs);
         click_count.set(click_count.get() + 1);
 
-        if click_count.get() % 2 == 0 {
-            IS_SHINING.borrow(cs).set(true);
-             // Obtain access to global timer
-            let mut timer = G_TIM.borrow(cs).borrow_mut();
-
-            // Adjust and start timer with updated delay value
-            timer
-                .as_mut()
-                .unwrap()
-                .start(TIM_DELAYMS.millis())
-                .unwrap();
+        if last_click_iteration.get() != 0 &&  current_iteration.get() - last_click_iteration.get() >= 4 {
+            click_count.set(0);
         }
 
-       
-        // Obtain access to Global Button Peripheral and Clear Interrupt Pending Flag
+        if click_count.get() == 2 {
+            IS_SHINING.borrow(cs).set(true);
+            click_count.set(0);
+        }
+        LAST_CLICK_ITERATION.borrow(cs).set(ITERATIONS.borrow(cs).get());
         let mut button = G_BUTTON.borrow(cs).borrow_mut();
         button.as_mut().unwrap().clear_interrupt_pending_bit();
     });
@@ -118,6 +111,8 @@ fn TIM2() {
                 shine_count.set(0);
             }
         }
+
+        ITERATIONS.borrow(cs).set(ITERATIONS.borrow(cs).get() + 1);
         
         let mut timer = G_TIM.borrow(cs).borrow_mut();
         timer.as_mut().unwrap().clear_interrupt(Event::Update);
