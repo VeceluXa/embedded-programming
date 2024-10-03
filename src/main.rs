@@ -82,7 +82,8 @@ fn EXTI15_10() {
         let click_count = CLICK_COUNT.borrow(cs);
         click_count.set(click_count.get() + 1);
 
-        if last_click_iteration.get() != 0 &&  current_iteration.get() - last_click_iteration.get() >= 4 {
+        let click_delta = current_iteration.get() - last_click_iteration.get();
+        if last_click_iteration.get() != 0 && (click_delta == 0 || click_delta >= 4) {
             click_count.set(0);
         }
 
